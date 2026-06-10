@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Nature Kingdom 庫存掃描</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+<style>
+  :root {
+    --bg: #0f0f0f;
+    --surface: #1a1a1a;
+    --surface2: #242424;
+    --border: #2e2e2e;
+    --accent: #7EC8A4;
+    --accent-dim: rgba(126,200,164,0.12);
+    --in: #4CAF81;
+    --in-dim: rgba(76,175,129,0.12);
+    --out: #E07B5A;
+    --out-dim: rgba(224,123,90,0.12);
+    --text: #f0f0f0;
+    --text2: #888;
+    --text3: #555;
+    --radius: 12px;
+    --font: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
+
+  /* ── Header ── */
+  .header {
+    padding: 16px 20px 12px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; background: var(--bg); z-index: 10;
+  }
+  .header h1 { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; }
+  .header .logo { width: 28px; height: 28px; background: var(--accent); border-radius: 8px;
+    display: flex; align-items: center; justify-content: center; font-size: 14px; }
+  .auth-btn {
+    font-size: 13px; padding: 6px 14px; border-radius: 20px;
+    border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text); cursor: pointer; transition: all 0.2s;
+  }
+  .auth-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .auth-btn.signed { border-color: var(--in); color: var(--in); }
+
+  /* ── Main ── */
+  .main { padding: 20px; max-width: 480px; margin: 0 auto; }
+
+  /* ── Scanner ── */
+  .scanner-card {
+    background: var(--surface); border-radius: var(--radius);
+    border: 1px solid var(--border); overflow: hidden; margin-bottom: 16px;
+  }
+  .scanner-header {
+    padding: 14px 16px; display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+  .scanner-title { font-size: 14px; font-weight: 600; }
+  .scan-btn {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; padding: 7px 16px; border-radius: 20px;
+    border: none; background: var(--accent); color: #0f0f0f;
+    font-weight: 600; cursor: pointer; transition: opacity 0.2s;
+  }
+  .scan-btn:hover { opacity: 0.85; }
+  .scan-btn:disabled { opacity: 0.4; cursor: default; }
+
+  #scanner-container {
+    width: 100%; background: #000; position: relative; display: none;
+    aspect-ratio: 4/3;
+  }
+  #scanner-container video { width: 100%; height: 100%; object-fit: cover; }
+  #scanner-container canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  .scan-overlay {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+  }
+  .scan-frame {
+    width: 65%; aspect-ratio: 3/1;
+    border: 2px solid var(--accent);
+    border-radius: 6px;
+    box-shadow: 0 0 0 1000px rgba(0,0,0,0.45);
+  }
+  .scan-line {
+    position: absolute; width: 63%; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    animation: scanline 1.8s ease-in-out infinite;
+  }
+  @keyframes scanline { 0%,100% { top: 32%; } 50% { top: 68%; } }
+
+  .manual-input {
+    padding: 14px 16px; display: flex; gap: 8px; border-top: 1px solid var(--border);
+  }
+  .manual-input input {
+    flex: 1; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 12px; color: var(--text); font-size: 14px;
+    outline: none; transition: border-color 0.2s;
+  }
+  .manual-input input:focus { border-color: var(--accent); }
+  .manual-input input::placeholder { color: var(--text3); }
+  .search-btn {
+    padding: 9px 16px; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text2); cursor: pointer; font-size: 13px;
+    transition: all 0.2s;
+  }
+  .search-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Product Card ── */
+  .product-card {
+    background: var(--surface); border-radius: var(--radius);
+    border: 1px solid var(--border); margin-bottom: 16px; display: none;
+  }
+  .product-info { padding: 16px; border-bottom: 1px solid var(--border); }
+  .product-badge {
+    display: inline-block; font-size: 11px; padding: 3px 8px;
+    border-radius: 4px; background: var(--accent-dim); color: var(--accent);
+    margin-bottom: 8px; font-weight: 500;
+  }
+  .product-name { font-size: 16px; font-weight: 600; margin-bottom: 4px; line-height: 1.3; }
+  .product-meta { font-size: 13px; color: var(--text2); display: flex; gap: 12px; flex-wrap: wrap; }
+  .product-stock {
+    padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border);
+  }
+  .stock-label { font-size: 13px; color: var(--text2); }
+  .stock-num { font-size: 24px; font-weight: 700; color: var(--text); }
+
+  /* ── Action ── */
+  .action-section { padding: 16px; }
+  .type-toggle { display: flex; gap: 8px; margin-bottom: 14px; }
+  .type-btn {
+    flex: 1; padding: 10px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--text2); font-size: 14px;
+    font-weight: 600; cursor: pointer; transition: all 0.2s; text-align: center;
+  }
+  .type-btn.in.active { background: var(--in-dim); border-color: var(--in); color: var(--in); }
+  .type-btn.out.active { background: var(--out-dim); border-color: var(--out); color: var(--out); }
+
+  .qty-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .qty-label { font-size: 13px; color: var(--text2); white-space: nowrap; }
+  .qty-ctrl { display: flex; align-items: center; gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .qty-ctrl button {
+    width: 40px; height: 40px; background: var(--surface2); border: none;
+    color: var(--text); font-size: 18px; cursor: pointer; transition: background 0.15s;
+  }
+  .qty-ctrl button:hover { background: var(--border); }
+  .qty-ctrl input {
+    width: 60px; height: 40px; background: transparent; border: none;
+    border-left: 1px solid var(--border); border-right: 1px solid var(--border);
+    color: var(--text); font-size: 16px; font-weight: 600; text-align: center; outline: none;
+  }
+
+  .note-input {
+    width: 100%; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 12px; color: var(--text); font-size: 14px;
+    outline: none; margin-bottom: 14px; transition: border-color 0.2s;
+  }
+  .note-input:focus { border-color: var(--accent); }
+  .note-input::placeholder { color: var(--text3); }
+
+  .confirm-btn {
+    width: 100%; padding: 13px; border-radius: 10px; border: none;
+    font-size: 15px; font-weight: 700; cursor: pointer; transition: all 0.2s;
+    background: var(--accent); color: #0f0f0f;
+  }
+  .confirm-btn:hover { opacity: 0.85; }
+  .confirm-btn:disabled { opacity: 0.4; cursor: default; }
+  .confirm-btn.out { background: var(--out); }
+
+  /* ── Toast ── */
+  .toast {
+    position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(80px);
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 20px; font-size: 14px; font-weight: 500;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.5); z-index: 100;
+    transition: transform 0.3s ease; white-space: nowrap;
+  }
+  .toast.show { transform: translateX(-50%) translateY(0); }
+  .toast.success { border-color: var(--in); color: var(--in); }
+  .toast.error { border-color: var(--out); color: var(--out); }
+
+  /* ── Records ── */
+  .records-card {
+    background: var(--surface); border-radius: var(--radius);
+    border: 1px solid var(--border); margin-bottom: 20px;
+  }
+  .records-header { padding: 14px 16px; border-bottom: 1px solid var(--border); font-size: 14px; font-weight: 600; }
+  .record-item {
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .record-item:last-child { border-bottom: none; }
+  .record-left { flex: 1; min-width: 0; }
+  .record-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .record-time { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .record-qty { font-size: 16px; font-weight: 700; }
+  .record-qty.in { color: var(--in); }
+  .record-qty.out { color: var(--out); }
+  .empty-records { padding: 24px; text-align: center; color: var(--text3); font-size: 13px; }
+
+  /* ── Login overlay ── */
+  .login-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+    display: flex; align-items: center; justify-content: center; z-index: 50;
+    backdrop-filter: blur(4px);
+  }
+  .login-box {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 16px; padding: 32px 28px; text-align: center;
+    max-width: 320px; width: 90%;
+  }
+  .login-icon { font-size: 36px; margin-bottom: 16px; }
+  .login-box h2 { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+  .login-box p { font-size: 14px; color: var(--text2); margin-bottom: 24px; line-height: 1.5; }
+  .google-btn {
+    width: 100%; padding: 12px; border-radius: 10px;
+    background: #fff; color: #333; font-size: 14px; font-weight: 600;
+    border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px;
+    transition: opacity 0.2s;
+  }
+  .google-btn:hover { opacity: 0.9; }
+  .google-icon { width: 18px; height: 18px; }
+</style>
+</head>
+<body>
+
+<!-- Login Overlay -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <div class="login-icon">📦</div>
+    <h2>Nature Kingdom</h2>
+    <p>登入你的 Google 帳號<br>開始掃描庫存</p>
+    <button class="google-btn" onclick="signIn()">
+      <svg class="google-icon" viewBox="0 0 24 24">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+      </svg>
+      使用 Google 帳號登入
+    </button>
+  </div>
+</div>
+
+<!-- Header -->
+<div class="header">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <div class="logo">🌿</div>
+    <h1>庫存掃描</h1>
+  </div>
+  <button class="auth-btn" id="authBtn" onclick="signOut()">登出</button>
+</div>
+
+<!-- Main -->
+<div class="main">
+
+  <!-- Scanner Card -->
+  <div class="scanner-card">
+    <div class="scanner-header">
+      <span class="scanner-title">掃描條碼</span>
+      <button class="scan-btn" id="scanBtn" onclick="toggleScanner()">
+        <span>📷</span> 開始掃描
+      </button>
+    </div>
+    <div id="scanner-container">
+      <video id="scannerVideo" autoplay playsinline muted></video>
+      <div class="scan-overlay">
+        <div class="scan-frame"></div>
+        <div class="scan-line"></div>
+      </div>
+    </div>
+    <div class="manual-input">
+      <input type="text" id="barcodeInput" placeholder="或手動輸入條碼..." 
+        onkeydown="if(event.key==='Enter')searchBarcode()" inputmode="numeric" />
+      <button class="search-btn" onclick="searchBarcode()">查詢</button>
+    </div>
+  </div>
+
+  <!-- Product Card -->
+  <div class="product-card" id="productCard">
+    <div class="product-info">
+      <div class="product-badge" id="productBrand">—</div>
+      <div class="product-name" id="productName">—</div>
+      <div class="product-meta">
+        <span id="productSku">—</span>
+        <span id="productSize">—</span>
+        <span id="productCat">—</span>
+      </div>
+    </div>
+    <div class="product-stock">
+      <div>
+        <div class="stock-label">目前庫存</div>
+        <div class="stock-num" id="stockNum">—</div>
+      </div>
+      <div style="text-align:right;">
+        <div class="stock-label">售價</div>
+        <div style="font-size:16px;font-weight:600;color:var(--accent);" id="productPrice">—</div>
+      </div>
+    </div>
+    <div class="action-section">
+      <div class="type-toggle">
+        <button class="type-btn in active" id="btnIn" onclick="setType('in')">＋ 進貨</button>
+        <button class="type-btn out" id="btnOut" onclick="setType('out')">－ 出貨</button>
+      </div>
+      <div class="qty-row">
+        <span class="qty-label">數量</span>
+        <div class="qty-ctrl">
+          <button onclick="changeQty(-1)">−</button>
+          <input type="number" id="qtyInput" value="1" min="1" max="999" />
+          <button onclick="changeQty(1)">＋</button>
+        </div>
+      </div>
+      <input class="note-input" type="text" id="noteInput" placeholder="備註（選填）" />
+      <button class="confirm-btn" id="confirmBtn" onclick="confirmAction()">確認進貨</button>
+    </div>
+  </div>
+
+  <!-- Recent Records -->
+  <div class="records-card">
+    <div class="records-header">最近記錄</div>
+    <div id="recordsList">
+      <div class="empty-records">還沒有記錄</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── Config ──
+const CLIENT_ID = '491895224807-skvsk18i1mur0l3lad8mevniptg1g58c.apps.googleusercontent.com';
+const SHEET_ID  = '1BfuVPYcux5TtP-hCzXCQgCzx_0LWGBLRfyKaz0zRE08';
+const SCOPES    = 'https://www.googleapis.com/auth/spreadsheets';
+const SHEET_PRODUCTS = '產品主檔';
+const SHEET_LOG      = '進出貨記錄';
+
+let tokenClient, accessToken = null;
+let products = [];
+let currentProduct = null;
+let actionType = 'in';
+let scanning = false;
+let recentRecords = [];
+
+// ── Google Auth ──
+function initGapi() {
+  gapi.load('client', async () => {
+    await gapi.client.init({ discoveryDocs: ['https://sheets.googleapis.com/$discovery/rest?version=v4'] });
+    tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      callback: (resp) => {
+        if (resp.error) { showToast('授權失敗', 'error'); return; }
+        accessToken = resp.access_token;
+        document.getElementById('loginOverlay').style.display = 'none';
+        document.getElementById('authBtn').textContent = '已登入';
+        document.getElementById('authBtn').classList.add('signed');
+        loadProducts();
+      }
+    });
+  });
+}
+
+function signIn() { tokenClient.requestAccessToken(); }
+function signOut() {
+  google.accounts.oauth2.revoke(accessToken, () => {
+    accessToken = null;
+    document.getElementById('loginOverlay').style.display = 'flex';
+    document.getElementById('authBtn').classList.remove('signed');
+    document.getElementById('authBtn').textContent = '登入';
+  });
+}
+
+// ── Load Products ──
+async function loadProducts() {
+  try {
+    const res = await gapi.client.sheets.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: `${SHEET_PRODUCTS}!A2:J200`
+    });
+    const rows = res.result.values || [];
+    // A=條碼, B=SKU, C=產品名, D=品牌, E=類別, F=規格, G=單位, H=售價, I=庫存, J=安全庫存
+    products = rows.map((r, i) => ({
+      row: i + 2,
+      barcode: (r[0]||'').trim(),
+      sku: (r[1]||'').trim(),
+      name: (r[2]||'').trim(),
+      brand: (r[3]||'').trim(),
+      category: (r[4]||'').trim(),
+      size: (r[5]||'').trim(),
+      unit: (r[6]||'').trim(),
+      price: r[7]||'',
+      stock: parseInt(r[8]||'0') || 0,
+    }));
+    showToast(`已載入 ${products.length} 筆產品`, 'success');
+  } catch(e) {
+    showToast('載入失敗，請重新登入', 'error');
+  }
+}
+
+// ── Search ──
+function searchBarcode(code) {
+  const q = (code || document.getElementById('barcodeInput').value || '').trim();
+  if (!q) return;
+  const found = products.find(p => p.barcode === q || p.sku === q ||
+    p.name.toLowerCase().includes(q.toLowerCase()));
+  if (!found) { showToast('找不到此商品', 'error'); return; }
+  showProduct(found);
+}
+
+function showProduct(p) {
+  currentProduct = p;
+  document.getElementById('productBrand').textContent = p.brand || '—';
+  document.getElementById('productName').textContent = p.name;
+  document.getElementById('productSku').textContent = p.sku;
+  document.getElementById('productSize').textContent = p.size;
+  document.getElementById('productCat').textContent = p.category;
+  document.getElementById('stockNum').textContent = p.stock;
+  document.getElementById('productPrice').textContent = p.price ? `NT$${parseInt(p.price).toLocaleString()}` : '—';
+  document.getElementById('qtyInput').value = 1;
+  document.getElementById('noteInput').value = '';
+  document.getElementById('productCard').style.display = 'block';
+  setType('in');
+  document.getElementById('productCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ── Type Toggle ──
+function setType(t) {
+  actionType = t;
+  document.getElementById('btnIn').classList.toggle('active', t === 'in');
+  document.getElementById('btnOut').classList.toggle('active', t === 'out');
+  const btn = document.getElementById('confirmBtn');
+  btn.textContent = t === 'in' ? '確認進貨' : '確認出貨';
+  btn.classList.toggle('out', t === 'out');
+}
+
+function changeQty(d) {
+  const el = document.getElementById('qtyInput');
+  el.value = Math.max(1, (parseInt(el.value)||1) + d);
+}
+
+// ── Confirm ──
+async function confirmAction() {
+  if (!currentProduct || !accessToken) return;
+  const qty = parseInt(document.getElementById('qtyInput').value) || 1;
+  const note = document.getElementById('noteInput').value;
+  const delta = actionType === 'in' ? qty : -qty;
+  const newStock = currentProduct.stock + delta;
+  if (newStock < 0) { showToast('庫存不足', 'error'); return; }
+
+  const btn = document.getElementById('confirmBtn');
+  btn.disabled = true; btn.textContent = '更新中…';
+
+  try {
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}/${now.getMonth()+1}/${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
+
+    // 1. 寫入進出貨記錄
+    await gapi.client.sheets.spreadsheets.values.append({
+      spreadsheetId: SHEET_ID,
+      range: `${SHEET_LOG}!A:G`,
+      valueInputOption: 'USER_ENTERED',
+      resource: { values: [[
+        dateStr,
+        actionType === 'in' ? '進貨' : '出貨',
+        currentProduct.sku,
+        currentProduct.name,
+        currentProduct.brand,
+        currentProduct.category,
+        delta,
+        note
+      ]]}
+    });
+
+    // 2. 更新產品主檔庫存
+    await gapi.client.sheets.spreadsheets.values.update({
+      spreadsheetId: SHEET_ID,
+      range: `${SHEET_PRODUCTS}!I${currentProduct.row}`,
+      valueInputOption: 'RAW',
+      resource: { values: [[newStock]] }
+    });
+
+    // 3. 更新本地
+    currentProduct.stock = newStock;
+    document.getElementById('stockNum').textContent = newStock;
+
+    // 4. 加入最近記錄
+    recentRecords.unshift({ name: currentProduct.name, delta, time: dateStr });
+    if (recentRecords.length > 10) recentRecords.pop();
+    renderRecords();
+
+    showToast(`${actionType === 'in' ? '進貨' : '出貨'} ${qty} 件完成`, 'success');
+    document.getElementById('barcodeInput').value = '';
+  } catch(e) {
+    showToast('更新失敗，請重試', 'error');
+  }
+  btn.disabled = false;
+  setType(actionType);
+}
+
+// ── Records ──
+function renderRecords() {
+  const el = document.getElementById('recordsList');
+  if (!recentRecords.length) { el.innerHTML = '<div class="empty-records">還沒有記錄</div>'; return; }
+  el.innerHTML = recentRecords.map(r => `
+    <div class="record-item">
+      <div class="record-left">
+        <div class="record-name">${r.name}</div>
+        <div class="record-time">${r.time}</div>
+      </div>
+      <div class="record-qty ${r.delta > 0 ? 'in' : 'out'}">${r.delta > 0 ? '+' : ''}${r.delta}</div>
+    </div>`).join('');
+}
+
+// ── Scanner ──
+function toggleScanner() {
+  scanning ? stopScanner() : startScanner();
+}
+
+function startScanner() {
+  const container = document.getElementById('scanner-container');
+  container.style.display = 'block';
+  document.getElementById('scanBtn').textContent = '⏹ 停止';
+  scanning = true;
+
+  Quagga.init({
+    inputStream: { type: 'LiveStream', target: document.getElementById('scannerVideo'),
+      constraints: { facingMode: 'environment', width: 640, height: 480 } },
+    decoder: { readers: ['ean_13_reader', 'ean_8_reader', 'code_128_reader'] },
+    locate: true
+  }, err => {
+    if (err) { showToast('無法啟動相機', 'error'); stopScanner(); return; }
+    Quagga.start();
+  });
+
+  Quagga.onDetected(result => {
+    const code = result.codeResult.code;
+    stopScanner();
+    document.getElementById('barcodeInput').value = code;
+    searchBarcode(code);
+  });
+}
+
+function stopScanner() {
+  Quagga.stop();
+  document.getElementById('scanner-container').style.display = 'none';
+  document.getElementById('scanBtn').innerHTML = '<span>📷</span> 開始掃描';
+  scanning = false;
+}
+
+// ── Toast ──
+function showToast(msg, type = '') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `toast ${type}`;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2500);
+}
+
+// ── Init ──
+window.onload = () => {
+  const s1 = document.createElement('script');
+  s1.src = 'https://apis.google.com/js/api.js';
+  s1.onload = initGapi;
+  document.head.appendChild(s1);
+
+  const s2 = document.createElement('script');
+  s2.src = 'https://accounts.google.com/gsi/client';
+  document.head.appendChild(s2);
+};
+</script>
+</body>
+</html>
