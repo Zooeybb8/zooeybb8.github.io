@@ -431,9 +431,10 @@ async function startScanner() {
   try {
     codeReader = new ZXing.BrowserMultiFormatReader();
 
-    // 取得後鏡頭
-    const devices = await ZXing.BrowserMultiFormatReader.listVideoInputDevices();
-    const backCamera = devices.find(d => /back|rear|environment/i.test(d.label)) || devices[devices.length - 1];
+    // 用原生 API 取得後鏡頭
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoDevices = devices.filter(d => d.kind === 'videoinput');
+    const backCamera = videoDevices.find(d => /back|rear|environment/i.test(d.label)) || videoDevices[videoDevices.length - 1];
     const deviceId = backCamera ? backCamera.deviceId : undefined;
 
     await codeReader.decodeFromVideoDevice(deviceId, 'scannerVideo', (result, err) => {
@@ -444,7 +445,6 @@ async function startScanner() {
         searchBarcode(code);
         if (navigator.vibrate) navigator.vibrate(80);
       }
-      // err 是正常的「還沒掃到」，不需處理
     });
   } catch(e) {
     showToast('無法啟動相機：' + e.message, 'error');
