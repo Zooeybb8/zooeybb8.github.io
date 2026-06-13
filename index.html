@@ -453,18 +453,13 @@ async function startScanner() {
       }
     };
 
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    const videoEl = document.getElementById('scannerVideo');
-    videoEl.srcObject = stream;
-    await videoEl.play();
+    // 取得後鏡頭 deviceId
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const videoDevices = devices.filter(d => d.kind === 'videoinput');
+    const backCamera = videoDevices.find(d => /back|rear|environment/i.test(d.label)) || videoDevices[videoDevices.length - 1];
+    const deviceId = backCamera ? backCamera.deviceId : undefined;
 
-    // 嘗試啟用相機自動對焦（部分裝置支援）
-    const track = stream.getVideoTracks()[0];
-    if (track && track.applyConstraints) {
-      track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
-    }
-
-    codeReader.decodeFromStream(stream, videoEl, (result, err) => {
+    await codeReader.decodeFromVideoDevice(deviceId, 'scannerVideo', (result, err) => {
       if (result) {
         const code = result.getText();
         stopScanner();
@@ -473,6 +468,13 @@ async function startScanner() {
         if (navigator.vibrate) navigator.vibrate(80);
       }
     });
+
+    // 嘗試啟用連續自動對焦
+    const videoEl = document.getElementById('scannerVideo');
+    if (videoEl.srcObject) {
+      const track = videoEl.srcObject.getVideoTracks()[0];
+      if (track) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+    }
   } catch(e) {
     showToast('無法啟動相機：' + e.message, 'error');
     stopScanner();
