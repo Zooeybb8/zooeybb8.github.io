@@ -396,7 +396,7 @@ async function confirmAction() {
       document.getElementById('barcodeInput').value = '';
     }
   } catch(e) {
-    showToast('更新失敗，請重試', 'error');
+    showToast('更新失敗：' + e.message, 'error');
   }
   btn.disabled = false;
   setType(actionType);
