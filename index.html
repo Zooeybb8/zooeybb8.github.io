@@ -429,15 +429,44 @@ async function startScanner() {
   document.getElementById('scanBtn').innerHTML = '⏹ 停止';
 
   try {
-    codeReader = new ZXing.BrowserMultiFormatReader();
+    // 只掃常見零售條碼格式，大幅提升速度
+    const hints = new Map();
+    const formats = [
+      ZXing.BarcodeFormat.EAN_13,
+      ZXing.BarcodeFormat.EAN_8,
+      ZXing.BarcodeFormat.CODE_128,
+      ZXing.BarcodeFormat.CODE_39,
+      ZXing.BarcodeFormat.UPC_A,
+      ZXing.BarcodeFormat.UPC_E,
+      ZXing.BarcodeFormat.QR_CODE,
+    ];
+    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
+    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
 
-    // 用原生 API 取得後鏡頭
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const videoDevices = devices.filter(d => d.kind === 'videoinput');
-    const backCamera = videoDevices.find(d => /back|rear|environment/i.test(d.label)) || videoDevices[videoDevices.length - 1];
-    const deviceId = backCamera ? backCamera.deviceId : undefined;
+    codeReader = new ZXing.BrowserMultiFormatReader(hints, 200); // 每 200ms 嘗試一次
 
-    await codeReader.decodeFromVideoDevice(deviceId, 'scannerVideo', (result, err) => {
+    // 直接用 facingMode 要求後鏡頭，並指定高解析度與自動對焦
+    const constraints = {
+      video: {
+        facingMode: { ideal: 'environment' },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        focusMode: { ideal: 'continuous' },
+      }
+    };
+
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    const videoEl = document.getElementById('scannerVideo');
+    videoEl.srcObject = stream;
+    await videoEl.play();
+
+    // 嘗試啟用相機自動對焦（部分裝置支援）
+    const track = stream.getVideoTracks()[0];
+    if (track && track.applyConstraints) {
+      track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+    }
+
+    codeReader.decodeFromStream(stream, videoEl, (result, err) => {
       if (result) {
         const code = result.getText();
         stopScanner();
@@ -456,6 +485,12 @@ function stopScanner() {
   if (codeReader) {
     codeReader.reset();
     codeReader = null;
+  }
+  // 手動釋放 stream，避免相機燈號殘留
+  const videoEl = document.getElementById('scannerVideo');
+  if (videoEl.srcObject) {
+    videoEl.srcObject.getTracks().forEach(t => t.stop());
+    videoEl.srcObject = null;
   }
   scanning = false;
   document.getElementById('scanner-container').style.display = 'none';
