@@ -371,20 +371,17 @@ async function confirmAction() {
   btn.disabled = true; btn.textContent = '更新中…';
 
   try {
-    const res = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body: JSON.stringify({
-        action: 'record',
-        type: actionType,
-        sku: currentProduct.sku,
-        name: currentProduct.name,
-        brand: currentProduct.brand,
-        category: currentProduct.category,
-        delta: delta,
-        note: note
-      })
+    const params = new URLSearchParams({
+      action: 'record',
+      type: actionType,
+      sku: currentProduct.sku,
+      name: currentProduct.name,
+      brand: currentProduct.brand,
+      category: currentProduct.category,
+      delta: delta,
+      note: note
     });
+    const res = await fetch(`${API_URL}?${params}`);
     const data = await res.json();
     if (data.error) { showToast(data.error, 'error'); }
     else {
