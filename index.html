@@ -373,6 +373,7 @@ async function confirmAction() {
   try {
     const res = await fetch(API_URL, {
       method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
       body: JSON.stringify({
         action: 'record',
         type: actionType,
