@@ -413,7 +413,9 @@ function renderRecords() {
     </div>`).join('');
 }
 
-// ── Scanner (ZXing) ──
+// ── Scanner ──
+let scanLoopId = null;
+
 function toggleScanner() {
   scanning ? stopScanner() : startScanner();
 }
@@ -424,27 +426,47 @@ async function startScanner() {
   document.getElementById('scanBtn').innerHTML = '⏹ 停止';
 
   try {
-    codeReader = new ZXing.BrowserMultiFormatReader(null, 200);
-
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const videoDevices = devices.filter(d => d.kind === 'videoinput');
-    const backCamera = videoDevices.find(d => /back|rear|environment/i.test(d.label)) || videoDevices[videoDevices.length - 1];
-    const deviceId = backCamera ? backCamera.deviceId : undefined;
-
-    await codeReader.decodeFromVideoDevice(deviceId, 'scannerVideo', (result, err) => {
-      if (result) {
-        const code = result.getText();
-        stopScanner();
-        document.getElementById('barcodeInput').value = code;
-        searchBarcode(code);
-        if (navigator.vibrate) navigator.vibrate(80);
-      }
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: { ideal: 'environment' } }
     });
-
     const videoEl = document.getElementById('scannerVideo');
-    if (videoEl.srcObject) {
-      const track = videoEl.srcObject.getVideoTracks()[0];
-      if (track) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+    videoEl.srcObject = stream;
+    await videoEl.play();
+
+    // 優先使用原生 BarcodeDetector（iOS 17+ / Chrome）
+    if ('BarcodeDetector' in window) {
+      const detector = new BarcodeDetector({
+        formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a', 'upc_e', 'qr_code']
+      });
+      const loop = async () => {
+        if (!scanning) return;
+        try {
+          const codes = await detector.detect(videoEl);
+          if (codes.length > 0) {
+            const code = codes[0].rawValue;
+            stopScanner();
+            document.getElementById('barcodeInput').value = code;
+            searchBarcode(code);
+            if (navigator.vibrate) navigator.vibrate(80);
+            return;
+          }
+        } catch(e) {}
+        scanLoopId = requestAnimationFrame(loop);
+      };
+      scanLoopId = requestAnimationFrame(loop);
+
+    } else {
+      // Fallback：ZXing
+      codeReader = new ZXing.BrowserMultiFormatReader(null, 200);
+      await codeReader.decodeFromStream(stream, videoEl, (result) => {
+        if (result) {
+          const code = result.getText();
+          stopScanner();
+          document.getElementById('barcodeInput').value = code;
+          searchBarcode(code);
+          if (navigator.vibrate) navigator.vibrate(80);
+        }
+      });
     }
   } catch(e) {
     showToast('無法啟動相機：' + e.message, 'error');
@@ -453,10 +475,8 @@ async function startScanner() {
 }
 
 function stopScanner() {
-  if (codeReader) {
-    codeReader.reset();
-    codeReader = null;
-  }
+  if (scanLoopId) { cancelAnimationFrame(scanLoopId); scanLoopId = null; }
+  if (codeReader) { codeReader.reset(); codeReader = null; }
   const videoEl = document.getElementById('scannerVideo');
   if (videoEl.srcObject) {
     videoEl.srcObject.getTracks().forEach(t => t.stop());
