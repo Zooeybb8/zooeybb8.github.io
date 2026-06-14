@@ -442,11 +442,17 @@ async function startScanner() {
       }
     });
 
-    // 嘗試啟用連續自動對焦
+    // 啟用高解析度 + 連續自動對焦
     const videoEl = document.getElementById('scannerVideo');
     if (videoEl.srcObject) {
       const track = videoEl.srcObject.getVideoTracks()[0];
-      if (track) track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(() => {});
+      if (track) {
+        track.applyConstraints({
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          advanced: [{ focusMode: 'continuous' }]
+        }).catch(() => {});
+      }
     }
   } catch(e) {
     showToast('無法啟動相機：' + e.message, 'error');
