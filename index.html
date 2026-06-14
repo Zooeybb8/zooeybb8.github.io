@@ -424,31 +424,7 @@ async function startScanner() {
   document.getElementById('scanBtn').innerHTML = '⏹ 停止';
 
   try {
-    // 只掃常見零售條碼格式，大幅提升速度
-    const hints = new Map();
-    const formats = [
-      ZXing.BarcodeFormat.EAN_13,
-      ZXing.BarcodeFormat.EAN_8,
-      ZXing.BarcodeFormat.CODE_128,
-      ZXing.BarcodeFormat.CODE_39,
-      ZXing.BarcodeFormat.UPC_A,
-      ZXing.BarcodeFormat.UPC_E,
-      ZXing.BarcodeFormat.QR_CODE,
-    ];
-    hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, formats);
-    hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-
-    codeReader = new ZXing.BrowserMultiFormatReader(hints, 200); // 每 200ms 嘗試一次
-
-    // 直接用 facingMode 要求後鏡頭，並指定高解析度與自動對焦
-    const constraints = {
-      video: {
-        facingMode: { ideal: 'environment' },
-        width: { ideal: 1920 },
-        height: { ideal: 1080 },
-        focusMode: { ideal: 'continuous' },
-      }
-    };
+    codeReader = new ZXing.BrowserMultiFormatReader(null, 200);
 
     // 取得後鏡頭 deviceId
     const devices = await navigator.mediaDevices.enumerateDevices();
