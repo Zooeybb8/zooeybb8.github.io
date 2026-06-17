@@ -118,6 +118,19 @@
   .stock-label { font-size: 13px; color: var(--text2); }
   .stock-num { font-size: 24px; font-weight: 700; color: var(--text); }
 
+  .expiry-stock-list {
+    padding: 10px 16px 12px;
+    border-bottom: 1px solid var(--border);
+    display: none;
+  }
+  .expiry-stock-title { font-size: 12px; color: var(--text3); margin-bottom: 6px; }
+  .expiry-stock-item {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 13px; padding: 3px 0;
+  }
+  .expiry-stock-date { color: var(--text2); }
+  .expiry-stock-qty { font-weight: 600; color: var(--accent); }
+
   .action-section { padding: 16px; }
   .type-toggle { display: flex; gap: 8px; margin-bottom: 14px; }
   .type-btn {
@@ -141,6 +154,24 @@
     border-left: 1px solid var(--border); border-right: 1px solid var(--border);
     color: var(--text); font-size: 16px; font-weight: 600; text-align: center; outline: none;
   }
+
+  .expiry-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .expiry-label {
+    font-size: 13px; color: var(--text2); white-space: nowrap;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .expiry-required { color: var(--out); font-size: 12px; }
+
+  .expiry-input, .expiry-select {
+    flex: 1; background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px 12px; color: var(--text); font-size: 14px;
+    outline: none; transition: border-color 0.2s; height: 44px;
+    appearance: none; -webkit-appearance: none;
+  }
+  .expiry-input:focus, .expiry-select:focus { border-color: var(--accent); }
+  .expiry-input.error { border-color: var(--out); }
+  .expiry-input::placeholder { color: var(--text3); }
+  .expiry-select option { background: var(--surface2); color: var(--text); }
 
   .note-input {
     width: 100%; background: var(--surface2); border: 1px solid var(--border);
@@ -183,6 +214,7 @@
   .record-left { flex: 1; min-width: 0; }
   .record-name { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .record-time { font-size: 11px; color: var(--text3); margin-top: 2px; }
+  .record-expiry { font-size: 11px; color: var(--accent); margin-top: 1px; }
   .record-qty { font-size: 16px; font-weight: 700; }
   .record-qty.in { color: var(--in); }
   .record-qty.out { color: var(--out); }
@@ -263,6 +295,10 @@
         <div style="font-size:16px;font-weight:600;color:var(--accent);" id="productPrice">—</div>
       </div>
     </div>
+    <div class="expiry-stock-list" id="expiryStockList">
+      <div class="expiry-stock-title">各到期日庫存</div>
+      <div id="expiryStockItems"></div>
+    </div>
     <div class="action-section">
       <div class="type-toggle">
         <button class="type-btn in active" id="btnIn" onclick="setType('in')">＋ 進貨</button>
@@ -275,6 +311,15 @@
           <input type="number" id="qtyInput" value="1" min="1" max="999" />
           <button onclick="changeQty(1)">＋</button>
         </div>
+      </div>
+      <div class="expiry-row" id="expiryRow">
+        <span class="expiry-label">
+          有效日期<span class="expiry-required" id="expiryRequiredMark">*</span>
+        </span>
+        <input class="expiry-input" type="month" id="expiryInput" style="display:none;" />
+        <select class="expiry-select" id="expirySelect" style="display:none;">
+          <option value="">選擇到期日</option>
+        </select>
       </div>
       <input class="note-input" type="text" id="noteInput" placeholder="備註（選填）" />
       <button class="confirm-btn" id="confirmBtn" onclick="confirmAction()">確認進貨</button>
@@ -302,7 +347,6 @@ let scanning = false;
 let recentRecords = [];
 let codeReader = null;
 
-// ── Load Products ──
 async function loadProducts() {
   try {
     const res = await fetch(`${API_URL}?action=getProducts`);
@@ -318,7 +362,6 @@ async function loadProducts() {
   }
 }
 
-// ── Search ──
 function searchBarcode(code) {
   const q = (code || document.getElementById('barcodeInput').value || '').trim();
   if (!q) return;
@@ -339,12 +382,28 @@ function showProduct(p) {
   document.getElementById('productPrice').textContent = p.price ? `NT$${parseInt(p.price).toLocaleString()}` : '—';
   document.getElementById('qtyInput').value = 1;
   document.getElementById('noteInput').value = '';
+  document.getElementById('expiryInput').value = '';
+  document.getElementById('expiryInput').classList.remove('error');
+  renderExpiryStockList(p);
   document.getElementById('productCard').style.display = 'block';
   setType('in');
   document.getElementById('productCard').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
-// ── Type Toggle ──
+function renderExpiryStockList(p) {
+  const listEl = document.getElementById('expiryStockList');
+  const itemsEl = document.getElementById('expiryStockItems');
+  const expiryDates = p.expiryDates || [];
+  if (expiryDates.length === 0) { listEl.style.display = 'none'; return; }
+  listEl.style.display = 'block';
+  itemsEl.innerHTML = expiryDates.map(e =>
+    `<div class="expiry-stock-item">
+      <span class="expiry-stock-date">到期：${e.date}</span>
+      <span class="expiry-stock-qty">${e.qty} 件</span>
+    </div>`
+  ).join('');
+}
+
 function setType(t) {
   actionType = t;
   document.getElementById('btnIn').classList.toggle('active', t === 'in');
@@ -352,6 +411,33 @@ function setType(t) {
   const btn = document.getElementById('confirmBtn');
   btn.textContent = t === 'in' ? '確認進貨' : '確認出貨';
   btn.classList.toggle('out', t === 'out');
+  const expiryInput = document.getElementById('expiryInput');
+  const expirySelect = document.getElementById('expirySelect');
+  if (t === 'in') {
+    expiryInput.style.display = 'block';
+    expirySelect.style.display = 'none';
+  } else {
+    expiryInput.style.display = 'none';
+    expirySelect.style.display = 'block';
+    populateExpirySelect();
+  }
+}
+
+function populateExpirySelect() {
+  const sel = document.getElementById('expirySelect');
+  sel.innerHTML = '<option value="">選擇到期日</option>';
+  if (!currentProduct) return;
+  const expiryDates = currentProduct.expiryDates || [];
+  if (expiryDates.length === 0) {
+    sel.innerHTML = '<option value="">（無到期日資料）</option>';
+    return;
+  }
+  expiryDates.forEach(e => {
+    const opt = document.createElement('option');
+    opt.value = e.date;
+    opt.textContent = `${e.date}（剩 ${e.qty} 件）`;
+    sel.appendChild(opt);
+  });
 }
 
 function changeQty(d) {
@@ -359,24 +445,34 @@ function changeQty(d) {
   el.value = Math.max(1, (parseInt(el.value)||1) + d);
 }
 
-// ── Confirm ──
 async function confirmAction() {
   if (!currentProduct) return;
   const qty = parseInt(document.getElementById('qtyInput').value) || 1;
   const note = document.getElementById('noteInput').value;
+  let expiryDate = '';
+  if (actionType === 'in') {
+    const expiryInput = document.getElementById('expiryInput');
+    expiryDate = expiryInput.value.trim();
+    if (!expiryDate) {
+      expiryInput.classList.add('error');
+      showToast('請輸入有效日期（必填）', 'error');
+      expiryInput.focus();
+      return;
+    }
+    expiryInput.classList.remove('error');
+    expiryDate = expiryDate.replace('-', '/');
+  } else {
+    expiryDate = document.getElementById('expirySelect').value;
+    if (!expiryDate) { showToast('請選擇有效日期', 'error'); return; }
+  }
   const delta = actionType === 'in' ? qty : -qty;
   if (currentProduct.stock + delta < 0) { showToast('庫存不足', 'error'); return; }
-
   const btn = document.getElementById('confirmBtn');
   btn.disabled = true; btn.textContent = '更新中…';
-
   try {
     const params = new URLSearchParams({
-      action: 'record',
-      type: actionType,
-      sku: currentProduct.sku,
-      delta: delta,
-      note: note
+      action: 'record', type: actionType,
+      sku: currentProduct.sku, delta, expiry: expiryDate, note
     });
     const res = await fetch(`${API_URL}?${params}`);
     const data = await res.json();
@@ -384,13 +480,19 @@ async function confirmAction() {
     else {
       currentProduct.stock = data.newStock;
       document.getElementById('stockNum').textContent = data.newStock;
+      if (data.expiryDates) {
+        currentProduct.expiryDates = data.expiryDates;
+        renderExpiryStockList(currentProduct);
+        if (actionType === 'out') populateExpirySelect();
+      }
       const now = new Date();
       const timeStr = `${now.getMonth()+1}/${now.getDate()} ${now.getHours()}:${String(now.getMinutes()).padStart(2,'0')}`;
-      recentRecords.unshift({ name: currentProduct.name, delta, time: timeStr });
+      recentRecords.unshift({ name: currentProduct.name, delta, time: timeStr, expiry: expiryDate });
       if (recentRecords.length > 10) recentRecords.pop();
       renderRecords();
       showToast(`${actionType === 'in' ? '進貨' : '出貨'} ${qty} 件完成`, 'success');
       document.getElementById('barcodeInput').value = '';
+      document.getElementById('expiryInput').value = '';
     }
   } catch(e) {
     showToast('更新失敗：' + e.message, 'error');
@@ -399,7 +501,6 @@ async function confirmAction() {
   setType(actionType);
 }
 
-// ── Records ──
 function renderRecords() {
   const el = document.getElementById('recordsList');
   if (!recentRecords.length) { el.innerHTML = '<div class="empty-records">還沒有記錄</div>'; return; }
@@ -407,37 +508,27 @@ function renderRecords() {
     <div class="record-item">
       <div class="record-left">
         <div class="record-name">${r.name}</div>
+        ${r.expiry ? `<div class="record-expiry">到期：${r.expiry}</div>` : ''}
         <div class="record-time">${r.time}</div>
       </div>
       <div class="record-qty ${r.delta > 0 ? 'in' : 'out'}">${r.delta > 0 ? '+' : ''}${r.delta}</div>
     </div>`).join('');
 }
 
-// ── Scanner ──
 let scanLoopId = null;
-
-function toggleScanner() {
-  scanning ? stopScanner() : startScanner();
-}
+function toggleScanner() { scanning ? stopScanner() : startScanner(); }
 
 async function startScanner() {
   scanning = true;
   document.getElementById('scanner-container').style.display = 'block';
   document.getElementById('scanBtn').innerHTML = '⏹ 停止';
-
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' } }
-    });
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } } });
     const videoEl = document.getElementById('scannerVideo');
     videoEl.srcObject = stream;
     await videoEl.play();
-
-    // 優先使用原生 BarcodeDetector（iOS 17+ / Chrome）
     if ('BarcodeDetector' in window) {
-      const detector = new BarcodeDetector({
-        formats: ['ean_13', 'ean_8', 'code_128', 'code_39', 'upc_a', 'upc_e', 'qr_code']
-      });
+      const detector = new BarcodeDetector({ formats: ['ean_13','ean_8','code_128','code_39','upc_a','upc_e','qr_code'] });
       const loop = async () => {
         if (!scanning) return;
         try {
@@ -454,9 +545,7 @@ async function startScanner() {
         scanLoopId = requestAnimationFrame(loop);
       };
       scanLoopId = requestAnimationFrame(loop);
-
     } else {
-      // Fallback：ZXing
       codeReader = new ZXing.BrowserMultiFormatReader(null, 200);
       await codeReader.decodeFromStream(stream, videoEl, (result) => {
         if (result) {
@@ -478,16 +567,12 @@ function stopScanner() {
   if (scanLoopId) { cancelAnimationFrame(scanLoopId); scanLoopId = null; }
   if (codeReader) { codeReader.reset(); codeReader = null; }
   const videoEl = document.getElementById('scannerVideo');
-  if (videoEl.srcObject) {
-    videoEl.srcObject.getTracks().forEach(t => t.stop());
-    videoEl.srcObject = null;
-  }
+  if (videoEl.srcObject) { videoEl.srcObject.getTracks().forEach(t => t.stop()); videoEl.srcObject = null; }
   scanning = false;
   document.getElementById('scanner-container').style.display = 'none';
   document.getElementById('scanBtn').innerHTML = '<span>📷</span> 開始掃描';
 }
 
-// ── Toast ──
 function showToast(msg, type = '') {
   const el = document.getElementById('toast');
   el.textContent = msg;
@@ -496,7 +581,6 @@ function showToast(msg, type = '') {
   setTimeout(() => el.classList.remove('show'), 2500);
 }
 
-// ── Init ──
 loadProducts();
 </script>
 </body>
