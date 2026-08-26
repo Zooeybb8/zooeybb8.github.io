@@ -26,12 +26,22 @@
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: var(--bg); color: var(--text); font-family: var(--font); min-height: 100vh; }
 
+  .topbar { position: sticky; top: 0; background: var(--bg); z-index: 10; }
   .header {
     padding: 16px 20px 12px;
     display: flex; align-items: center; justify-content: space-between;
     border-bottom: 1px solid var(--border);
-    position: sticky; top: 0; background: var(--bg); z-index: 10;
   }
+
+  .tab-bar { display: flex; border-bottom: 1px solid var(--border); }
+  .tab-btn {
+    flex: 1; padding: 12px 8px; background: none; border: none;
+    border-bottom: 2px solid transparent; margin-bottom: -1px;
+    color: var(--text2); font-size: 14px; font-weight: 600;
+    font-family: inherit; cursor: pointer;
+    transition: color 0.2s, border-color 0.2s;
+  }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
   .header h1 { font-size: 17px; font-weight: 600; letter-spacing: -0.3px; }
   .header .logo { width: 28px; height: 28px; background: var(--accent); border-radius: 8px;
     display: flex; align-items: center; justify-content: center; font-size: 14px; }
@@ -220,6 +230,51 @@
   .record-qty.out { color: var(--out); }
   .empty-records { padding: 24px; text-align: center; color: var(--text3); font-size: 13px; }
 
+  .inv-toolbar { display: flex; gap: 8px; margin-bottom: 8px; }
+  .inv-toolbar input, .inv-toolbar select {
+    flex: 1; min-width: 0; height: 40px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 8px; padding: 0 12px; color: var(--text);
+    font-size: 14px; font-family: inherit; outline: none;
+    appearance: none; -webkit-appearance: none;
+    transition: border-color 0.2s;
+  }
+  .inv-toolbar input:focus, .inv-toolbar select:focus { border-color: var(--accent); }
+  .inv-toolbar input::placeholder { color: var(--text3); }
+  .inv-toolbar select option { background: var(--surface2); color: var(--text); }
+  .inv-summary { font-size: 12px; color: var(--text3); margin: 10px 2px 10px; }
+
+  .inv-card {
+    background: var(--surface); border-radius: var(--radius);
+    border: 1px solid var(--border); margin-bottom: 20px; overflow: hidden;
+  }
+  .inv-group-title {
+    padding: 9px 16px; background: var(--surface2);
+    font-size: 11px; font-weight: 700; color: var(--text2); letter-spacing: 0.5px;
+  }
+  .inv-item {
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    display: flex; gap: 12px; align-items: flex-start;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .inv-item:last-child { border-bottom: none; }
+  .inv-item:active { background: var(--surface2); }
+  .inv-left { flex: 1; min-width: 0; }
+  .inv-name { font-size: 14px; font-weight: 600; line-height: 1.35; }
+  .inv-meta { font-size: 11px; color: var(--text3); margin-top: 3px; }
+  .inv-expiry { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 5px; }
+  .inv-expiry span {
+    font-size: 11px; color: var(--accent); background: var(--accent-dim);
+    padding: 2px 6px; border-radius: 4px;
+  }
+  .inv-expiry.empty { font-size: 11px; color: var(--text3); }
+  .inv-right { text-align: right; flex-shrink: 0; }
+  .inv-stock { font-size: 20px; font-weight: 700; line-height: 1.1; }
+  .inv-stock.zero { color: var(--out); }
+  .inv-stock.low { color: #E0B15A; }
+  .inv-stock.ok { color: var(--in); }
+  .inv-unit { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
   .loading-overlay {
     position: fixed; inset: 0; background: rgba(15,15,15,0.92);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -241,18 +296,24 @@
   <div class="loading-text">載入產品資料中…</div>
 </div>
 
-<div class="header">
-  <div style="display:flex;align-items:center;gap:10px;">
-    <div class="logo">🌿</div>
-    <h1>庫存掃描</h1>
+<div class="topbar">
+  <div class="header">
+    <div style="display:flex;align-items:center;gap:10px;">
+      <div class="logo">🌿</div>
+      <h1>庫存掃描</h1>
+    </div>
+    <div class="sync-status">
+      <div class="sync-dot" id="syncDot"></div>
+      <span id="syncText">連線中</span>
+    </div>
   </div>
-  <div class="sync-status">
-    <div class="sync-dot" id="syncDot"></div>
-    <span id="syncText">連線中</span>
+  <div class="tab-bar">
+    <button class="tab-btn active" id="tabScan" onclick="switchTab('scan')">掃描進出貨</button>
+    <button class="tab-btn" id="tabInv" onclick="switchTab('inv')">商品清單</button>
   </div>
 </div>
 
-<div class="main">
+<div class="main" id="viewScan">
 
   <div class="scanner-card">
     <div class="scanner-header">
@@ -335,6 +396,24 @@
 
 </div>
 
+<div class="main" id="viewInv" style="display:none;">
+  <div class="inv-toolbar">
+    <input type="text" id="invSearch" placeholder="搜尋品名 / SKU / 品牌…" oninput="renderInventory()" />
+  </div>
+  <div class="inv-toolbar">
+    <select id="invBrand" onchange="renderInventory()">
+      <option value="">全部品牌</option>
+    </select>
+    <select id="invSort" onchange="renderInventory()">
+      <option value="brand">依品牌</option>
+      <option value="stock">庫存少→多</option>
+      <option value="expiry">到期日近→遠</option>
+    </select>
+  </div>
+  <div class="inv-summary" id="invSummary"></div>
+  <div class="inv-card" id="invList"></div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script>
@@ -352,6 +431,7 @@ async function loadProducts() {
     const res = await fetch(`${API_URL}?action=getProducts`);
     const data = await res.json();
     products = data.products || [];
+    populateBrandFilter();
     document.getElementById('loadingOverlay').style.display = 'none';
     document.getElementById('syncDot').classList.add('ok');
     document.getElementById('syncText').textContent = `${products.length} 筆產品`;
@@ -513,6 +593,118 @@ function renderRecords() {
       </div>
       <div class="record-qty ${r.delta > 0 ? 'in' : 'out'}">${r.delta > 0 ? '+' : ''}${r.delta}</div>
     </div>`).join('');
+}
+
+// ── 商品清單分頁 ──
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g,
+    c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+// 到期日排序用：2027/5 要排在 2027/12 前面，不能用字串比較
+function expKey(s) {
+  const m = String(s || '').match(/^(\d{4})\/(\d{1,2})$/);
+  return m ? Number(m[1]) * 12 + Number(m[2]) : Infinity;
+}
+
+function switchTab(t) {
+  const isScan = t === 'scan';
+  document.getElementById('viewScan').style.display = isScan ? 'block' : 'none';
+  document.getElementById('viewInv').style.display = isScan ? 'none' : 'block';
+  document.getElementById('tabScan').classList.toggle('active', isScan);
+  document.getElementById('tabInv').classList.toggle('active', !isScan);
+  if (!isScan) {
+    if (scanning) stopScanner();
+    renderInventory();
+  }
+  window.scrollTo(0, 0);
+}
+
+function populateBrandFilter() {
+  const sel = document.getElementById('invBrand');
+  const brands = [...new Set(products.map(p => p.brand).filter(Boolean))].sort();
+  sel.innerHTML = '<option value="">全部品牌</option>' +
+    brands.map(b => `<option value="${esc(b)}">${esc(b)}</option>`).join('');
+}
+
+function renderInventory() {
+  const q = document.getElementById('invSearch').value.trim().toLowerCase();
+  const brand = document.getElementById('invBrand').value;
+  const sort = document.getElementById('invSort').value;
+
+  const items = products.filter(p => {
+    if (brand && p.brand !== brand) return false;
+    if (!q) return true;
+    return (p.name || '').toLowerCase().includes(q)
+      || (p.sku || '').toLowerCase().includes(q)
+      || (p.brand || '').toLowerCase().includes(q)
+      || (p.barcode || '').includes(q);
+  });
+
+  const earliest = p => {
+    const d = (p.expiryDates || []).map(e => expKey(e.date));
+    return d.length ? Math.min(...d) : Infinity;
+  };
+
+  if (sort === 'stock') {
+    items.sort((a, b) => (a.stock || 0) - (b.stock || 0) || (a.name || '').localeCompare(b.name || ''));
+  } else if (sort === 'expiry') {
+    items.sort((a, b) => earliest(a) - earliest(b) || (a.name || '').localeCompare(b.name || ''));
+  } else {
+    items.sort((a, b) => (a.brand || '').localeCompare(b.brand || '') || (a.name || '').localeCompare(b.name || ''));
+  }
+
+  const totalQty = items.reduce((s, p) => s + (p.stock || 0), 0);
+  const zeroCount = items.filter(p => !p.stock).length;
+  document.getElementById('invSummary').textContent =
+    `共 ${items.length} 項 · 總庫存 ${totalQty} 件 · 缺貨 ${zeroCount} 項`;
+
+  const listEl = document.getElementById('invList');
+  if (!items.length) {
+    listEl.innerHTML = '<div class="empty-records">找不到符合的商品</div>';
+    return;
+  }
+
+  let html = '';
+  let lastBrand = null;
+  items.forEach(p => {
+    if (sort === 'brand' && p.brand !== lastBrand) {
+      lastBrand = p.brand;
+      html += `<div class="inv-group-title">${esc(p.brand || '未分類')}</div>`;
+    }
+    html += invItemHtml(p, sort !== 'brand');
+  });
+  listEl.innerHTML = html;
+}
+
+function invItemHtml(p, showBrand) {
+  const stock = p.stock || 0;
+  const cls = stock === 0 ? 'zero' : (stock <= 3 ? 'low' : 'ok');
+  const dates = [...(p.expiryDates || [])].sort((a, b) => expKey(a.date) - expKey(b.date));
+  const expiryHtml = dates.length
+    ? `<div class="inv-expiry">${dates.map(e => `<span>${esc(e.date)} · ${e.qty}</span>`).join('')}</div>`
+    : '<div class="inv-expiry empty">無到期日資料</div>';
+  const meta = [showBrand ? p.brand : '', p.sku, p.size].filter(Boolean).map(esc).join(' · ');
+  return `
+    <div class="inv-item" onclick="openFromInventory('${esc(p.sku)}')">
+      <div class="inv-left">
+        <div class="inv-name">${esc(p.name)}</div>
+        <div class="inv-meta">${meta}</div>
+        ${expiryHtml}
+      </div>
+      <div class="inv-right">
+        <div class="inv-stock ${cls}">${stock}</div>
+        <div class="inv-unit">件</div>
+      </div>
+    </div>`;
+}
+
+// 從清單點商品，直接跳到掃描分頁做進出貨
+function openFromInventory(sku) {
+  const p = products.find(x => x.sku === sku);
+  if (!p) return;
+  switchTab('scan');
+  showProduct(p);
 }
 
 let scanLoopId = null;
